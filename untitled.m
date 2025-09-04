@@ -1,0 +1,220 @@
+
+
+    syms X(t) theta(t) alpha(t) real
+    syms m_b m_s I_b I_s l L L_m R T_driving T_f g m_w I_wheel real
+    
+
+    F_bh_expr = m_b * diff( X + (L+L_m)*sin(theta) - l*sin(alpha), t, 2 );  
+    F_wh_expr = simplify(m_s * diff( X + L*sin(theta), t, 2 ) + F_bh_expr);
+    F_bv_expr = g*m_b + m_b * diff( (L+L_m)*cos(theta) + l*cos(alpha), t, 2 );
+    F_wv_expr = m_s * diff( L*cos(theta), t, 2 ) + g*m_s + F_bv_expr;
+    
+
+    eq5 = diff(theta, t, 2) == ...
+        ((F_wv_expr*L + L_m*F_bv_expr)*sin(theta) - ...
+         (F_wh_expr*L + F_bh_expr*L_m)*cos(theta) - ...
+          T_driving + T_f) / I_s;
+    
+    eq8 = diff(alpha, t, 2) == ...
+        (F_bh_expr*l*cos(alpha) + F_bv_expr*l*sin(alpha) + T_f) / I_b;
+    
+    eq9 = diff(X, t, 2) == ...
+        (T_driving - F_wh_expr*R)/ (m_w*R + I_wheel/R);
+    
+    % ============= 4. Get ddX, ddtheta, ddalpha =============
+    ddtheta_expr = rhs(eq5);
+    ddalpha_expr = rhs(eq8);
+    ddX_expr = rhs(eq9);
+    
+    syms x1 x2 x3 x4 x5 x6 ddottheta ddotalpha ddotx real
+    syms Td Tf real 
+    
+
+    f1 = x2;   % dot{x1} = x2
+    
+    f2 = subs(ddX_expr, {diff(theta,t,t),diff(alpha,t,t),diff(X,t), diff(theta,t), diff(alpha,t),X,theta,alpha}, {ddottheta,ddotalpha,x2, x4, x6,x1,x3,x5});
+    f2 = subs(f2, {T_driving, T_f}, {Td, Tf});
+    
+    f3 = x4;   % dot{x3} = x4
+    
+    f4 = subs(ddtheta_expr, {diff(theta,t,t),diff(alpha,t,t),diff(X,t), diff(theta,t), diff(alpha,t),X,theta,alpha}, {ddotx,ddotalpha,x2, x4, x6,x1,x3,x5});
+    f4 = subs(f4, {T_driving, T_f}, {Td, Tf});
+    
+    f5 = x6;   % dot{x5} = x6
+    
+    f6 = subs(ddalpha_expr, {diff(theta,t,t),diff(alpha,t,t),diff(X,t), diff(theta,t), diff(alpha,t),X,theta,alpha}, {ddottheta,ddotx,x2, x4, x6,x1,x3,x5});
+    f6 = subs(f6, {T_driving, T_f}, {Td, Tf});
+    
+    %% apply the small angle analysis that the square of the angular velocity.
+    f2 = subs(f2, ...
+        {sin(x3),    cos(x3),    sin(x5),    cos(x5), x4^2  , x6^2}, ...
+        {x3,         1,          x5,         1,         0        0});
+    
+    f4 = subs(f4, ...
+        {sin(x3),    cos(x3),    sin(x5),    cos(x5) , x4^2  , x6^2}, ...
+        {x3,         1,          x5,         1,         0        0});
+    
+    f6 = subs(f6, ...
+        {sin(x3),    cos(x3),    sin(x5),    cos(x5) , x4^2  , x6^2}, ...
+        {x3,         1,          x5,         1,         0        0});
+    
+    
+    % make the functions back to equation
+    f2 = ddotx == f2;
+    f4 = ddottheta == f4;
+    f6 = ddotalpha == f6;
+    sol = solve([f2,f4,f6], [ddotx,ddottheta,ddotalpha]);
+    
+    sol2 = simplify(sol.ddotx);
+    sol4 = simplify(sol.ddottheta);
+    sol6 = simplify(sol.ddotalpha);
+
+    disp(sol2);
+    disp(sol4);
+    disp(sol6);
+
+    f = [f1;sol2;f3;sol4;f5;sol6];
+    A_sym = jacobian(f, [x1, x2, x3, x4, x5, x6]);  
+    B_sym = jacobian(f, [Td, Tf]);
+
+    %% steady state signal
+    x_star = [0, 0, 0 ,0 ,0 ,0];
+    u_star = [0 , 0];
+    
+    %% 5) substitute in at steady point
+    A_lin = subs(A_sym, [x1, x2, x3, x4, x5, x6, Td, Tf], [x_star, u_star]);
+    B_lin = subs(B_sym, [x1, x2, x3, x4, x5, x6, Td, Tf], [x_star, u_star]);
+    
+    param_values = {
+        m_b, 1.2;   % Body Mass 10 kg
+        m_s, 1.6;    % support Mass 5 kg
+        m_w, 0.3;
+        I_b, 0.00725;  % Rotation Inertia 0.2 kg·m²
+        I_s, 0.03346;  % 负载转动惯量 0.05 kg·m²
+        I_wheel, 0.00038 ;  % wheel inertia 0.05 kg·m²
+        l, 0.05;    % Center of mass of body to the joint 0.05 m
+        L, 0.0903;    % wheel joint  1.0 m
+        L_m, 0.0897;  % 额外偏移量 0.15 m
+        R, 0.05;   % wheel radius 0.05 m
+        g, 9.81    % 9.81 m/s²
+    };
+
+     param_values_num = {
+        'm_b', 1.2;   % Body Mass 10 kg
+        'm_s', 1.6;    % support Mass 5 kg
+        'm_w', 0.3;
+        'I_b', 0.003;  % Rotation Inertia 0.2 kg·m²
+        'I_s', 0.03346;  % Load moment of inertia 0.05 kg·m²
+        'I_wheel', 0.00038 ;  % wheel inertia 0.05 kg·m²
+        'l', 0.05;    % Center of mass of body to the joint
+        'L', 0.0903;    % wheel joint  1.0 m
+        'L_m', 0.0897;  % 额外偏移量 0.15 m
+        'R', 0.05;   % wheel radius 0.15 m
+        'g', 9.81    % 9.81 m/s²
+    };
+
+    % Create an empty struct to hold the parameters
+    param_num = struct();
+    
+    % Loop through each row of the cell array
+    for i = 1:size(param_values_num, 1)
+        % Get the field name (e.g., 'm_b') and its value (e.g., 1.2)
+        fieldName = param_values_num{i, 1};
+        fieldValue = param_values_num{i, 2};
+        
+        % Add the new field to the struct
+        param_num.(fieldName) = fieldValue;
+    end
+
+
+    % Create an empty struct to hold the parameters
+    params_val = struct();
+    
+
+    params = param_values(:, 1);  % 参数
+    values = param_values(:, 2);  % 对应的值
+    
+    % 将参数值代入 A_lin 和 B_lin
+    A_lin_num = double(subs(A_lin, params, values));
+    B_lin_num = double(subs(B_lin, params, values));
+    
+  % 显示结果
+    disp('线性化后的系统矩阵 A:');
+    disp(A_lin_num);
+    
+    disp('线性化后的输入矩阵 B:');
+    disp(B_lin_num);
+
+    % A_lin_num and B_lin_num calculated by previous steps
+    A = A_lin_num;
+    B = B_lin_num;
+    
+    X_desired = 5;  % desired position
+    x_desired = [X_desired; 0; 0; 0; 0; 0];  % desired state vector
+    
+    % weight matrix
+    Q = diag([10, 5, 500, 1, 1, 1]);  
+    R = diag([1 10]);          
+    
+    % LQR Gain
+    [K, ~, ~] = lqr(A, B, Q, R);
+    
+    % define close loop dynamics
+    A_cl = A - B * K;  % close loop matrix
+    
+    % define initial state 
+    x0 = [0; 0; 0; 0; 0; 0];  % initial state
+    
+    % simulation time
+    t = 0:0.01:10;  % time vector
+    
+    % closed loop response
+    [~, x] = ode45(@(t, x) A_cl * (x - x_desired), t, x0);
+    
+
+
+    figure;
+    
+    % reesponse for each state 
+    subplot(3, 2, 1);
+    plot(t, x(:, 1));  % x1: position x
+    xlabel('Time (s)');
+    ylabel('x (Position)');
+    title('Position (x) Response');
+    grid on;
+    
+    subplot(3, 2, 2);
+    plot(t, x(:, 2));  % x2: vel \dot{x}
+    xlabel('Time (s)');
+    ylabel('dx/dt (Velocity)');
+    title('Velocity (\dot{x}) Response');
+    grid on;
+    
+    subplot(3, 2, 3);
+    plot(t, x(:, 3));  % x3: angle \theta
+    xlabel('Time (s)');
+    ylabel('\theta (Angle)');
+    title('Angle (\theta) Response');
+    grid on;
+    
+    subplot(3, 2, 4);
+    plot(t, x(:, 4));  % x4: angular velocity \dot{\theta}
+    xlabel('Time (s)');
+    ylabel('d\theta/dt (Angular Velocity)');
+    title('Angular Velocity (\dot{\theta}) Response');
+    grid on;
+    
+    subplot(3, 2, 5);
+    plot(t, x(:, 5));  % x5: angle \alpha
+    xlabel('Time (s)');
+    ylabel('\alpha (Angle)');
+    title('Angle (\alpha) Response');
+    grid on;
+    
+    subplot(3, 2, 6);
+    plot(t, x(:, 6));  % x6: angular velocity \dot{\alpha}
+    xlabel('Time (s)');
+    ylabel('d\alpha/dt (Angular Velocity)');
+    title('Angular Velocity (\dot{\alpha}) Response');
+    grid on;
+
