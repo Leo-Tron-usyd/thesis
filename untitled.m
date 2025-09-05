@@ -1,51 +1,49 @@
-
-
-    syms X(t) theta(t) alpha(t) real
-    syms m_b m_s I_b I_s l L L_m R T_driving T_f g m_w I_wheel real
+    syms X(t) theta(t) phi(t) real
+    syms M mp IM Ip l L L_m R T Tp g m_w I_wheel real
     
 
-    F_bh_expr = m_b * diff( X + (L+L_m)*sin(theta) - l*sin(alpha), t, 2 );  
-    F_wh_expr = simplify(m_s * diff( X + L*sin(theta), t, 2 ) + F_bh_expr);
-    F_bv_expr = g*m_b + m_b * diff( (L+L_m)*cos(theta) + l*cos(alpha), t, 2 );
-    F_wv_expr = m_s * diff( L*cos(theta), t, 2 ) + g*m_s + F_bv_expr;
+    Nm = M * diff( X + (L+L_m)*sin(theta) - l*sin(phi), t, 2 );  
+    N = mp * diff( X + L*sin(theta), t, 2 ) + Nm;
+    PM = g*M + M * diff( (L+L_m)*cos(theta) + l*cos(phi), t, 2 );
+    P = mp * diff( L*cos(theta), t, 2 ) + g*mp + PM;
     
 
     eq5 = diff(theta, t, 2) == ...
-        ((F_wv_expr*L + L_m*F_bv_expr)*sin(theta) - ...
-         (F_wh_expr*L + F_bh_expr*L_m)*cos(theta) - ...
-          T_driving + T_f) / I_s;
+        ((P*L + L_m*PM)*sin(theta) - ...
+         (N*L + Nm*L_m)*cos(theta) - ...
+          T + Tp) / Ip;
     
-    eq8 = diff(alpha, t, 2) == ...
-        (F_bh_expr*l*cos(alpha) + F_bv_expr*l*sin(alpha) + T_f) / I_b;
+    eq8 = diff(phi, t, 2) == ...
+        (Nm*l*cos(phi) + PM*l*sin(phi) + Tp) / IM;
     
     eq9 = diff(X, t, 2) == ...
-        (T_driving - F_wh_expr*R)/ (m_w*R + I_wheel/R);
+        (T - N*R)/ (m_w*R + I_wheel/R);
     
     % ============= 4. Get ddX, ddtheta, ddalpha =============
     ddtheta_expr = rhs(eq5);
-    ddalpha_expr = rhs(eq8);
+    ddphi_expr = rhs(eq8);
     ddX_expr = rhs(eq9);
     
-    syms x1 x2 x3 x4 x5 x6 ddottheta ddotalpha ddotx real
-    syms Td Tf real 
+    syms x1 x2 x3 x4 x5 x6 ddottheta ddotphi ddotx real
+    syms T_n Tp_n real 
     
 
-    f1 = x2;   % dot{x1} = x2
+    f1 = x2;   % dot{x1} = ddx
     
-    f2 = subs(ddX_expr, {diff(theta,t,t),diff(alpha,t,t),diff(X,t), diff(theta,t), diff(alpha,t),X,theta,alpha}, {ddottheta,ddotalpha,x2, x4, x6,x1,x3,x5});
-    f2 = subs(f2, {T_driving, T_f}, {Td, Tf});
+    f2 = subs(ddX_expr, {diff(theta,t,t),diff(phi,t,t),diff(X,t), diff(theta,t), diff(phi,t),X,theta,phi}, {ddottheta,ddotphi,x2, x4, x6,x1,x3,x5});
+    f2 = subs(f2, {T, Tp}, {T_n, Tp_n});
     
-    f3 = x4;   % dot{x3} = x4
+    f3 = x4;   % dot{x3} = ddtheta
     
-    f4 = subs(ddtheta_expr, {diff(theta,t,t),diff(alpha,t,t),diff(X,t), diff(theta,t), diff(alpha,t),X,theta,alpha}, {ddotx,ddotalpha,x2, x4, x6,x1,x3,x5});
-    f4 = subs(f4, {T_driving, T_f}, {Td, Tf});
+    f4 = subs(ddtheta_expr, {diff(X,t,t),diff(phi,t,t),diff(X,t), diff(theta,t), diff(phi,t),X,theta,phi}, {ddotx,ddotphi,x2, x4, x6,x1,x3,x5});
+    f4 = subs(f4, {T, Tp}, {T_n, Tp_n});
     
-    f5 = x6;   % dot{x5} = x6
+    f5 = x6;   % dot{x5} = ddphi
     
-    f6 = subs(ddalpha_expr, {diff(theta,t,t),diff(alpha,t,t),diff(X,t), diff(theta,t), diff(alpha,t),X,theta,alpha}, {ddottheta,ddotx,x2, x4, x6,x1,x3,x5});
-    f6 = subs(f6, {T_driving, T_f}, {Td, Tf});
+    f6 = subs(ddphi_expr, {diff(theta,t,t),diff(X,t,t),diff(X,t), diff(theta,t), diff(phi,t),X,theta,phi}, {ddottheta,ddotx,x2, x4, x6,x1,x3,x5});
+    f6 = subs(f6, {T, Tp}, {T_n, Tp_n});
     
-    %% apply the small angle analysis that the square of the angular velocity.
+    %% apply the small angle analysis that the square of the angular velocity.ddotphi
     f2 = subs(f2, ...
         {sin(x3),    cos(x3),    sin(x5),    cos(x5), x4^2  , x6^2}, ...
         {x3,         1,          x5,         1,         0        0});
@@ -62,12 +60,12 @@
     % make the functions back to equation
     f2 = ddotx == f2;
     f4 = ddottheta == f4;
-    f6 = ddotalpha == f6;
-    sol = solve([f2,f4,f6], [ddotx,ddottheta,ddotalpha]);
+    f6 = ddotphi == f6;
+    sol = solve([f2,f4,f6], [ddotx,ddottheta,ddotphi]);
     
     sol2 = simplify(sol.ddotx);
     sol4 = simplify(sol.ddottheta);
-    sol6 = simplify(sol.ddotalpha);
+    sol6 = simplify(sol.ddotphi);
 
     disp(sol2);
     disp(sol4);
@@ -75,40 +73,40 @@
 
     f = [f1;sol2;f3;sol4;f5;sol6];
     A_sym = jacobian(f, [x1, x2, x3, x4, x5, x6]);  
-    B_sym = jacobian(f, [Td, Tf]);
+    B_sym = jacobian(f, [T_n, Tp_n]);
 
     %% steady state signal
     x_star = [0, 0, 0 ,0 ,0 ,0];
     u_star = [0 , 0];
     
     %% 5) substitute in at steady point
-    A_lin = subs(A_sym, [x1, x2, x3, x4, x5, x6, Td, Tf], [x_star, u_star]);
-    B_lin = subs(B_sym, [x1, x2, x3, x4, x5, x6, Td, Tf], [x_star, u_star]);
+    A_lin = subs(A_sym, [x1, x2, x3, x4, x5, x6, T_n, Tp_n], [x_star, u_star]);
+    B_lin = subs(B_sym, [x1, x2, x3, x4, x5, x6, T_n, Tp_n], [x_star, u_star]);
     
     param_values = {
-        m_b, 1.2;   % Body Mass 10 kg
-        m_s, 1.6;    % support Mass 5 kg
+        M, 1.2;   % Body Mass 10 kg
+        mp, 1.6;    % support Mass 5 kg
         m_w, 0.3;
-        I_b, 0.00725;  % Rotation Inertia 0.2 kg·m²
-        I_s, 0.03346;  % 负载转动惯量 0.05 kg·m²
+        IM, 0.00725;  % Rotation Inertia 0.2 kg·m²
+        Ip, 0.03346;  
         I_wheel, 0.00038 ;  % wheel inertia 0.05 kg·m²
         l, 0.05;    % Center of mass of body to the joint 0.05 m
         L, 0.0903;    % wheel joint  1.0 m
-        L_m, 0.0897;  % 额外偏移量 0.15 m
+        L_m, 0.0897;  
         R, 0.05;   % wheel radius 0.05 m
         g, 9.81    % 9.81 m/s²
     };
 
      param_values_num = {
-        'm_b', 1.2;   % Body Mass 10 kg
-        'm_s', 1.6;    % support Mass 5 kg
+        'M', 1.2;   % Body Mass 10 kg
+        'mp', 1.6;    % support Mass 5 kg
         'm_w', 0.3;
-        'I_b', 0.003;  % Rotation Inertia 0.2 kg·m²
-        'I_s', 0.03346;  % Load moment of inertia 0.05 kg·m²
+        'IM', 0.00725;  % Rotation Inertia 0.2 kg·m²
+        'Ip', 0.03346;  % Load moment of inertia 0.05 kg·m²
         'I_wheel', 0.00038 ;  % wheel inertia 0.05 kg·m²
         'l', 0.05;    % Center of mass of body to the joint
         'L', 0.0903;    % wheel joint  1.0 m
-        'L_m', 0.0897;  % 额外偏移量 0.15 m
+        'L_m', 0.0897;  
         'R', 0.05;   % wheel radius 0.15 m
         'g', 9.81    % 9.81 m/s²
     };
@@ -118,7 +116,7 @@
     
     % Loop through each row of the cell array
     for i = 1:size(param_values_num, 1)
-        % Get the field name (e.g., 'm_b') and its value (e.g., 1.2)
+        % Get the field name (e.g., 'M') and its value (e.g., 1.2)
         fieldName = param_values_num{i, 1};
         fieldValue = param_values_num{i, 2};
         
@@ -153,9 +151,9 @@
     x_desired = [X_desired; 0; 0; 0; 0; 0];  % desired state vector
     
     % weight matrix
-    Q = diag([10, 5, 500, 1, 1, 1]);  
-    R = diag([1 10]);          
-    
+    Q = diag([400, 100, 1, 1, 5000, 1]);  
+    R = diag([100 25]);          
+        
     % LQR Gain
     [K, ~, ~] = lqr(A, B, Q, R);
     
@@ -205,16 +203,16 @@
     grid on;
     
     subplot(3, 2, 5);
-    plot(t, x(:, 5));  % x5: angle \alpha
+    plot(t, x(:, 5));  % x5: angle \phi
     xlabel('Time (s)');
-    ylabel('\alpha (Angle)');
-    title('Angle (\alpha) Response');
+    ylabel('\phi (Angle)');
+    title('Angle (\phi) Response');
     grid on;
     
     subplot(3, 2, 6);
-    plot(t, x(:, 6));  % x6: angular velocity \dot{\alpha}
+    plot(t, x(:, 6));  % x6: angular velocity \dot{\phi}
     xlabel('Time (s)');
-    ylabel('d\alpha/dt (Angular Velocity)');
-    title('Angular Velocity (\dot{\alpha}) Response');
+    ylabel('d\phi/dt (Angular Velocity)');
+    title('Angular Velocity (\dot{\phi}) Response');
     grid on;
 
