@@ -78,10 +78,25 @@
     %% steady state signal
     x_star = [0, 0, 0 ,0 ,0 ,0];
     u_star = [0 , 0];
+
+    x_aug_star = [0,0,0,0,0,0,0];
+    u_aug_star = [0,0];
+
+
+
+    Cv = zeros(1, 6);
+    Cv(1, 2) = 1; %state 2, x_dot
+    A_aug = [0,Cv;zeros(6,1),A_sym];
+    B_aug = [ zeros(1, 2);B_sym];
+
+
+
     
     %% 5) substitute in at steady point
     A_lin = subs(A_sym, [x1, x2, x3, x4, x5, x6, T_n, Tp_n], [x_star, u_star]);
     B_lin = subs(B_sym, [x1, x2, x3, x4, x5, x6, T_n, Tp_n], [x_star, u_star]);
+    A_aug_lin = subs(A_aug, [x1, x2, x3, x4, x5, x6, T_n, Tp_n], [x_star, u_star]);
+    B_aug_lin = subs(B_aug, [x1, x2, x3, x4, x5, x6, T_n, Tp_n], [x_star, u_star]);
     
     param_values = {
         M, 1.2;   % Body Mass 10 kg
@@ -129,12 +144,18 @@
     params_val = struct();
     
 
-    params = param_values(:, 1);  % 参数
-    values = param_values(:, 2);  % 对应的值
+    params = param_values(:, 1);  % params
+    values = param_values(:, 2);  % values
     
     % 将参数值代入 A_lin 和 B_lin
     A_lin_num = double(subs(A_lin, params, values));
     B_lin_num = double(subs(B_lin, params, values));
+
+    A_aug_lin_num = double(subs(A_aug_lin, params, values));
+    B_aug_lin_num = double(subs(B_aug_lin, params, values));
+
+
+
     
   % 显示结果
     disp('线性化后的系统矩阵 A:');
@@ -143,76 +164,33 @@
     disp('线性化后的输入矩阵 B:');
     disp(B_lin_num);
 
+    disp('线性化后的系统矩阵 A aug:');
+    disp(A_aug_lin_num);
+    
+    disp('线性化后的输入矩阵 B aug:');
+    disp(B_aug_lin_num);
+
+
     % A_lin_num and B_lin_num calculated by previous steps
     A = A_lin_num;
     B = B_lin_num;
     
-    X_desired = 5;  % desired position
-    x_desired = [X_desired; 0; 0; 0; 0; 0];  % desired state vector
+    X_desired = 0.6;  % desired position
     
     % weight matrix
-    Q = diag([500, 100, 1, 1, 5000, 1]);  
-    R = diag([1000 1000]);          
-        
-    % LQR Gain
+    Q = diag([1e-6, 100, 1, 1, 5000, 1]);  
+    R = diag([100 25]); 
+
     [K, ~, ~] = lqr(A, B, Q, R);
-    
-    % define close loop dynamics
-    A_cl = A - B * K;  % close loop matrix
-    
-    % define initial state 
-    x0 = [0; 0; 0; 0; 0; 0];  % initial state
-    
-    % simulation time
-    t = 0:0.01:10;  % time vector
-    
-    % closed loop response
-    [~, x] = ode45(@(t, x) A_cl * (x - x_desired), t, x0);
-    
+        
+   % Build Augmented state space model
+
+   dX_desired = 0.2;
+   dx_desired = [0;0;dX_desired;0;0;0;0];
+   Q_1 = diag([600 ,1e-6, 100, 1, 1, 5000, 1]);  
+   R_1 = diag([100 25]);   
+
+   [K_1, ~, ~] = lqr(A_aug_lin_num, B_aug_lin_num, Q_1, R_1);
 
 
-    figure;
-    
-    % reesponse for each state 
-    subplot(3, 2, 1);
-    plot(t, x(:, 1));  % x1: position x
-    xlabel('Time (s)');
-    ylabel('x (Position)');
-    title('Position (x) Response');
-    grid on;
-    
-    subplot(3, 2, 2);
-    plot(t, x(:, 2));  % x2: vel \dot{x}
-    xlabel('Time (s)');
-    ylabel('dx/dt (Velocity)');
-    title('Velocity (\dot{x}) Response');
-    grid on;
-    
-    subplot(3, 2, 3);
-    plot(t, x(:, 3));  % x3: angle \theta
-    xlabel('Time (s)');
-    ylabel('\theta (Angle)');
-    title('Angle (\theta) Response');
-    grid on;
-    
-    subplot(3, 2, 4);
-    plot(t, x(:, 4));  % x4: angular velocity \dot{\theta}
-    xlabel('Time (s)');
-    ylabel('d\theta/dt (Angular Velocity)');
-    title('Angular Velocity (\dot{\theta}) Response');
-    grid on;
-    
-    subplot(3, 2, 5);
-    plot(t, x(:, 5));  % x5: angle \phi
-    xlabel('Time (s)');
-    ylabel('\phi (Angle)');
-    title('Angle (\phi) Response');
-    grid on;
-    
-    subplot(3, 2, 6);
-    plot(t, x(:, 6));  % x6: angular velocity \dot{\phi}
-    xlabel('Time (s)');
-    ylabel('d\phi/dt (Angular Velocity)');
-    title('Angular Velocity (\dot{\phi}) Response');
-    grid on;
 
