@@ -98,99 +98,197 @@
     A_aug_lin = subs(A_aug, [x1, x2, x3, x4, x5, x6, T_n, Tp_n], [x_star, u_star]);
     B_aug_lin = subs(B_aug, [x1, x2, x3, x4, x5, x6, T_n, Tp_n], [x_star, u_star]);
     
-    param_values = {
-        M, 1.2;   % Body Mass 10 kg
-        mp, 1.6 *2;    % support Mass 5 kg
-        m_w, 0.3 *2;
-        IM, 0.00725 ;  % Rotation Inertia 0.2 kg·m²
-        Ip, 0.03346 *2;  
-        I_wheel, 0.00038 *2;  % wheel inertia 0.05 kg·m²
-        l, 0.05;    % Center of mass of body to the joint 0.05 m
-        L, 0.0903;    % wheel joint  1.0 m
-        L_m, 0.0897;  
-        R, 0.05;   % wheel radius 0.05 m
-        g, 9.81    % 9.81 m/s²
-    };
 
-     param_values_num = {
-        'M', 1.2;   % Body Mass 10 kg
-        'mp', 1.6 *2;    % support Mass 5 kg
-        'm_w', 0.3 *2;
-        'IM', 0.00725;  % Rotation Inertia 0.2 kg·m²
-        'Ip', 0.03346 *2;  % Load moment of inertia 0.05 kg·m²
-        'I_wheel', 0.00038 *2;  % wheel inertia 0.05 kg·m²
-        'l', 0.05;    % Center of mass of body to the joint
-        'L', 0.0903;    % wheel joint  1.0 m
-        'L_m', 0.0897;  
-        'R', 0.05;   % wheel radius 0.15 m
-        'g', 9.81    % 9.81 m/s²
-    };
+    base_params = struct();
+    base_params.M = 1.2;
+    base_params.mp = 1.6 *2;
+    base_params.m_w = 0.3 * 2;
+    base_params.IM = 0.00725;
+    base_params.I_wheel = 0.00038 * 2;
+    base_params.l = 0.05;
+    base_params.R = 0.05;
+    base_params.g = 9.81;
 
-    % Create an empty struct to hold the parameters
-    param_num = struct();
+    results = struct('params', {}, 'K_gain', {});
+
+    for L_val = 0.13:0.01:0.28
+        current_params = base_params;
+        % Call the calculator function, which now returns the inertia AND the angles.
+        [inertia_val, l_num, l_m_num] = inertia_calculator(L_val);
+        current_params.Ip = inertia_val * 2;
+        current_params.L = l_num;
+        current_params.L_m = l_m_num;
     
-    % Loop through each row of the cell array
-    for i = 1:size(param_values_num, 1)
-        % Get the field name (e.g., 'M') and its value (e.g., 1.2)
-        fieldName = param_values_num{i, 1};
-        fieldValue = param_values_num{i, 2};
+        A_aug_lin_num = double(subs(A_lin, current_params));
+        B_aug_lin_num = double(subs(B_lin, current_params));
+    
+%       disp('Linearized System input matrix A aug:');
+%       disp(A_aug_lin_num);
+%         
+%       disp('Linearized System input matrix B aug:');
+%       disp(B_aug_lin_num);
+    
+    
+    %     % A_lin_num and B_lin_num calculated by previous steps
+    %     A = A_lin_num;
+    %     B = B_lin_num;
         
-        % Add the new field to the struct
-        param_num.(fieldName) = fieldValue;
+    %     X_desired = 0.6;  % desired position
+    %     
+    %     % weight matrix
+    %     Q = diag([1e-6, 100, 1, 1, 5000, 1]);  
+    %     R = diag([100 25]); 
+    % 
+    %     [K, ~, ~] = lqr(A, B, Q, R);
+    %         
+       % Build Augmented state space model
+    
+       dX_desired = 0.2;
+       dx_desired = [0;dX_desired;0;0;0;0];
+       Q_1 = diag([1e-6, 200, 1, 1, 5000, 1]);  
+       R_1 = diag([100 25]);   
+    
+       [K_1, ~, ~] = lqr(A_aug_lin_num, B_aug_lin_num, Q_1, R_1);
+
+        % --- 2. CREATE A STRUCT TO PAIR THE DATA ---
+        new_result.params = current_params;
+        new_result.K_gain = K_1;
+        
+        % --- 3. APPEND THE PAIRED DATA TO YOUR RESULTS ARRAY ---
+        results(end+1) = new_result;
+    end
+
+    disp(results)
+
+    
+
+    % fitting the matrix using polygons
+    %% 1. Data Preparation
+    % Extract L values and K matrices from the results struct.
+    num_points = length(results);
+    L_values = zeros(1, num_points);
+    % Get the size of the K matrix (assuming all K matrices are the same size).
+    [k_rows, k_cols] = size(results(1).K_gain);
+    % Use a cell array to store the data for each element of the K matrix as L changes.
+    K_elements_data = cell(k_rows, k_cols);
+    
+    for i = 1:num_points
+        L_values(i) = results(i).params.L;
+        for r = 1:k_rows
+            for c = 1:k_cols
+                K_elements_data{r, c}(i) = results(i).K_gain(r, c);
+            end
+        end
+    end
+    
+    %% 2. Perform the Polynomial Fit
+    % =========================================================================
+    % ===                THIS IS A KEY TUNING PARAMETER                     ===
+    % =========================================================================
+    polynomial_order = 4; % <<<<<< Choose the order 'n' of the polynomial. Try 2, 3, 4, 5...
+    % =========================================================================
+    
+    [k_rows, k_cols] = size(p_models);
+    num_coeffs = polynomial_order + 1;
+    
+    % Initialize an empty matrix to store the coefficients
+    p_matrix = zeros(k_rows * k_cols, num_coeffs);
+    
+    % Loop through the cell array and stack the coefficient vectors into the matrix
+    idx = 1;
+    for r = 1:k_rows
+        for c = 1:k_cols
+            p_matrix(idx, :) = p_models{r, c};
+            idx = idx + 1;
+        end
+    end
+
+    
+    fprintf('Completed %d-order polynomial fitting for %d elements of the K matrix.\n', polynomial_order, k_rows*k_cols);
+    
+    %% 3. Visualization and Verification
+    % Create a new, finer L vector for smooth plotting.
+    L_fine = linspace(min(L_values), max(L_values), 200);
+    
+    figure('Name', 'Polynomial Fit Results for K Matrix Elements', 'Position', [50, 50, 1000, 600]);
+    plot_idx = 1;
+    for r = 1:k_rows
+        for c = 1:k_cols
+            subplot(k_rows, k_cols, plot_idx);
+            
+            % Plot the original data points.
+            plot(L_values, K_elements_data{r, c}, 'bo', 'MarkerFaceColor', 'b', 'DisplayName', 'Original Data Points');
+            hold on;
+            
+            % Calculate and plot the fitted curve.
+            K_fit_fine = polyval(p_models{r, c}, L_fine);
+            plot(L_fine, K_fit_fine, 'r-', 'LineWidth', 2, 'DisplayName', ['Order ' num2str(polynomial_order) ' Fit']);
+            
+            grid on;
+            title(sprintf('K(%d, %d) vs. L', r, c));
+            xlabel('Parameter L Value');
+            ylabel(sprintf('K(%d, %d) Value', r, c));
+            legend('show');
+            
+            plot_idx = plot_idx + 1;
+        end
     end
 
 
-    % Create an empty struct to hold the parameters
-    params_val = struct();
+
+
+
+   % --- Function Definition ---
+% It's good practice to keep function definitions at the end of a script file.
+function [I,LH,LL ] = inertia_calculator(L_input)
+    % This function calculates the inertia 'I' for a given input length 'L'.
+    % It also returns the solved angles theta1 and theta2.
+
+    % --- Define Constants ---
+    L1 = 0.07;
+    L2 = 0.105;
+    M1 = 0.3;
+    M2 = 0.3;
+    M3 = 0.5;
+    M4 = 0.5;
+    LR = 0.2;
+
+    % --- Define System of Equations for the Solver ---
+    % 'fun' returns the error for a given set of angles 'theta'.
+    % lsqnonlin will try to make these errors as close to zero as possible.
+    fun = @(theta) [
+        2*L1*sin(theta(1)) + 2*L2*sin(theta(2)) - L_input;
+        0.5*LR + 2*L1*cos(theta(1)) - 2*L2*cos(theta(2))
+        ];
     
-
-    params = param_values(:, 1);  % params
-    values = param_values(:, 2);  % values
+    % --- Initial Guess and Bounds for the solver ---
+    theta0 = [0.2, 0]; % Initial guess for [theta1, theta2]
+    lb = [0, -pi/2];         % Lower bounds [0, 0]
+    ub = [pi, pi/2];   % Upper bounds [pi/3, pi/3]
     
-    % 将参数值代入 A_lin 和 B_lin
-    A_lin_num = double(subs(A_lin, params, values));
-    B_lin_num = double(subs(B_lin, params, values));
-
-    A_aug_lin_num = double(subs(A_aug_lin, params, values));
-    B_aug_lin_num = double(subs(B_aug_lin, params, values));
-
-
-
+    % --- Solve the System using lsqnonlin ---
+    % Suppress the solver's default output for a cleaner command window.
+    options = optimoptions('lsqnonlin', 'Display', 'off');
+    theta_sol = lsqnonlin(fun, theta0, lb, ub, options);
     
-  % 显示结果
-    disp('线性化后的系统矩阵 A:');
-    disp(A_lin_num);
+    % --- Extract Solution ---
+    theta1 = theta_sol(1);
+    theta2 = theta_sol(2);
     
-    disp('线性化后的输入矩阵 B:');
-    disp(B_lin_num);
-
-    disp('线性化后的系统矩阵 A aug:');
-    disp(A_aug_lin_num);
+    % --- Subsequent Calculations for Inertia ---
+    I_l = 2827482.39 * 1e-9;   % long leg
+    I_h = 586653.56 * 1e-9;    % short leg
     
-    disp('线性化后的输入矩阵 B aug:');
-    disp(B_aug_lin_num);
-
-
-    % A_lin_num and B_lin_num calculated by previous steps
-    A = A_lin_num;
-    B = B_lin_num;
+    y1 = L1*sin(theta1);
+    y2 = y1;
+    y3 = 2*y1 + L2*sin(theta2);
+    y4 = y3;
     
-    X_desired = 0.6;  % desired position
+    LH = (y1*M1 + y2*M2 + y3*M3 + y4*M4) / (M1 + M2 + M3 + M4);
+    LL = L_input-LH;
+    LHR = sqrt((LH - y1)^2 + (LR/2 + L1*cos(theta1))^2);
+    LLR = sqrt((y3 - LH)^2 + (L2*cos(theta2))^2);
     
-    % weight matrix
-    Q = diag([1e-6, 100, 1, 1, 5000, 1]);  
-    R = diag([100 25]); 
-
-    [K, ~, ~] = lqr(A, B, Q, R);
-        
-   % Build Augmented state space model
-
-   dX_desired = 0.2;
-   dx_desired = [0;0;dX_desired;0;0;0;0];
-   Q_1 = diag([600 ,1e-6, 100, 1, 1, 5000, 1]);  
-   R_1 = diag([100 25]);   
-
-   [K_1, ~, ~] = lqr(A_aug_lin_num, B_aug_lin_num, Q_1, R_1);
-
-
-
+    % Final inertia calculation
+    I = 2*(I_h + M1*LHR^2) + 2*(I_l + M3*LLR^2);
+end

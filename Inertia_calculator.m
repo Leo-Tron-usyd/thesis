@@ -1,55 +1,54 @@
-% --- 1. Define Known Parameters ---
+% --- Function Definition ---
+% It's good practice to keep function definitions at the end of a script file.
+function [I,LH,LL ] = inertia_calculator(L_input)
+    % This function calculates the inertia 'I' for a given input length 'L'.
+    % It also returns the solved angles theta1 and theta2.
 
-% Properties of the central rod
-m_rod = 1.7;      % Assume total mass of the central rod (kg)
-L_rod = 0.0125;       % Assume total length of the central rod (m)
+    % --- Define Constants ---
+    L1 = 0.07;
+    L2 = 0.105;
+    M1 = 0.3;
+    M2 = 0.3;
+    M3 = 0.5;
+    M4 = 0.5;
+    LR = 0.2;
 
-% Geometric position of the side planes/rods
-% Assume the center of mass of the four side planes is at a distance d
-d_planes = 0.005;  % Distance from the center of mass of each side plane to the central axis (m)
-
-
-% --- 2. Calculate the Moment of Inertia of the Central Rod ---
-
-% For a slender rod rotating about its center, the moment of inertia is (1/12)*m*L^2
-I_rod = (1/12) * m_rod * L_rod^2;
-
-fprintf('Total moment of inertia of the central rod I_rod = %.4f kg*m^2\n\n', I_rod);
-
-
-% --- 3. Distribute Mass and Inertia to the Four Side Planes ---
-
-% Assumption 1: The total mass is evenly distributed among the four side planes
-m_plane = m_rod / 4;
-fprintf('After distribution, the mass of each side plane m_plane = %.4f kg\n', m_plane);
-
-% Assumption 2: The geometry and position of the four side planes are identical
-
-% According to the Parallel Axis Theorem, the total moment of inertia of the four side planes is:
-% I_total_planes = 4 * (I_plane_cm + m_plane * d_planes^2)
-% We require I_total_planes == I_rod
-
-% Therefore, we can solve for the required moment of inertia of each side plane about its own center of mass, I_plane_cm
-% I_rod = 4 * I_plane_cm + 4 * m_plane * d_planes^2
-% I_rod = 4 * I_plane_cm + m_rod * d_planes^2
-% 4 * I_plane_cm = I_rod - m_rod * d_planes^2
-I_plane_cm = (I_rod - m_rod * d_planes^2) / 4;
-
-
-% --- 4. Output and Check the Results ---
-
-fprintf('Distance from the center of mass of each side plane to the central axis d = %.4f m\n', d_planes);
-
-% Check if the calculated moment of inertia is positive
-if I_plane_cm < 0
-    fprintf('\nError: The calculated moment of inertia for the side planes is negative (%.4f kg*m^2).\n', I_plane_cm);
-    fprintf('This means that for the current mass distribution, the distance d (%.2f m) is too large.\n', d_planes);
-    fprintf('Please decrease the value of d or reconsider the mass distribution.\n');
-else
-    fprintf('Calculated moment of inertia for each side plane about its own CoM should be I_plane_cm = %.4f kg*m^2\n', I_plane_cm);
+    % --- Define System of Equations for the Solver ---
+    % 'fun' returns the error for a given set of angles 'theta'.
+    % lsqnonlin will try to make these errors as close to zero as possible.
+    fun = @(theta) [
+        2*L1*sin(theta(1)) + 2*L2*sin(theta(2)) - L_input;
+        0.5*LR + 2*L1*cos(theta(1)) - 2*L2*cos(theta(2))
+        ];
     
-    % Verification
-    I_total_equivalent = 4 * (I_plane_cm + m_plane * d_planes^2);
-    fprintf('\nVerification: The total moment of inertia of the equivalent system = %.4f kg*m^2\n', I_total_equivalent);
-    fprintf('This matches the moment of inertia of the central rod (%.4f kg*m^2).\n', I_rod);
+    % --- Initial Guess and Bounds for the solver ---
+    theta0 = [0.2, 0]; % Initial guess for [theta1, theta2]
+    lb = [0, -pi/2];         % Lower bounds [0, 0]
+    ub = [pi, pi/2];   % Upper bounds [pi/3, pi/3]
+    
+    % --- Solve the System using lsqnonlin ---
+    % Suppress the solver's default output for a cleaner command window.
+    options = optimoptions('lsqnonlin', 'Display', 'off');
+    theta_sol = lsqnonlin(fun, theta0, lb, ub, options);
+    
+    % --- Extract Solution ---
+    theta1 = theta_sol(1);
+    theta2 = theta_sol(2);
+    
+    % --- Subsequent Calculations for Inertia ---
+    I_l = 2827482.39 * 1e-9;   % long leg
+    I_h = 586653.56 * 1e-9;    % short leg
+    
+    y1 = L1*sin(theta1);
+    y2 = y1;
+    y3 = 2*y1 + L2*sin(theta2);
+    y4 = y3;
+    
+    LH = (y1*M1 + y2*M2 + y3*M3 + y4*M4) / (M1 + M2 + M3 + M4);
+    LL = L_input-LH;
+    LHR = sqrt((LH - y1)^2 + (LR/2 + L1*cos(theta1))^2);
+    LLR = sqrt((y3 - LH)^2 + (L2*cos(theta2))^2);
+    
+    % Final inertia calculation
+    I = 2*(I_h + M1*LHR^2) + 2*(I_l + M3*LLR^2);
 end

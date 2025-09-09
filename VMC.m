@@ -19,13 +19,6 @@ C = L2^2+LBD2-L3^2;
 
 % Check for reachability
 discriminant = A^2 + B^2 - C^2;
-% if discriminant < 0
-%     % This configuration is not reachable
-%     L0 = 0;
-%     phi0 = 0;
-%     return; % Exit the function
-% end
-% Now it's safe to calculate phi2
 phi2 = 2*atan((B+sqrt(discriminant))/(A+C));
 
 % Compute end effector point
