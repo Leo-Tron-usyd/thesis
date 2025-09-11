@@ -182,11 +182,7 @@
     end
     
     %% 2. Perform the Polynomial Fit
-    % =========================================================================
-    % ===                THIS IS A KEY TUNING PARAMETER                     ===
-    % =========================================================================
-    polynomial_order = 4; % <<<<<< Choose the order 'n' of the polynomial. Try 2, 3, 4, 5...
-    % =========================================================================
+    polynomial_order = 4; % order of the polynomial. Try 2, 3, 4, 5...
     
     [k_rows, k_cols] = size(p_models);
     num_coeffs = polynomial_order + 1;
@@ -236,6 +232,14 @@
 
 
 
+
+
+
+
+
+
+
+    
 
 
    % --- Function Definition ---
@@ -292,3 +296,6 @@ function [I,LH,LL ] = inertia_calculator(L_input)
     % Final inertia calculation
     I = 2*(I_h + M1*LHR^2) + 2*(I_l + M3*LLR^2);
 end
+
+
+
