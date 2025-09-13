@@ -1,3 +1,7 @@
+
+
+
+
 % --- Function Definition ---
 % It's good practice to keep function definitions at the end of a script file.
 function [I,LH,LL ] = inertia_calculator(L_input)

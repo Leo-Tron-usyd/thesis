@@ -111,7 +111,8 @@
 
     results = struct('params', {}, 'K_gain', {});
 
-    for L_val = 0.13:0.01:0.28
+%     for L_val = 0.13:0.01:0.28
+    for L_val = 0.18
         current_params = base_params;
         % Call the calculator function, which now returns the inertia AND the angles.
         [inertia_val, l_num, l_m_num] = inertia_calculator(L_val);
@@ -122,26 +123,6 @@
         A_aug_lin_num = double(subs(A_lin, current_params));
         B_aug_lin_num = double(subs(B_lin, current_params));
     
-%       disp('Linearized System input matrix A aug:');
-%       disp(A_aug_lin_num);
-%         
-%       disp('Linearized System input matrix B aug:');
-%       disp(B_aug_lin_num);
-    
-    
-    %     % A_lin_num and B_lin_num calculated by previous steps
-    %     A = A_lin_num;
-    %     B = B_lin_num;
-        
-    %     X_desired = 0.6;  % desired position
-    %     
-    %     % weight matrix
-    %     Q = diag([1e-6, 100, 1, 1, 5000, 1]);  
-    %     R = diag([100 25]); 
-    % 
-    %     [K, ~, ~] = lqr(A, B, Q, R);
-    %         
-       % Build Augmented state space model
     
        dX_desired = 0.2;
        dx_desired = [0;dX_desired;0;0;0;0];
@@ -162,6 +143,78 @@
 
     
 
+    % fitting the matrix using polygons
+    %% 1. Data Preparation
+    % Extract L values and K matrices from the results struct.
+    num_points = length(results);
+    L_values = zeros(1, num_points);
+    % Get the size of the K matrix (assuming all K matrices are the same size).
+    [k_rows, k_cols] = size(results(1).K_gain);
+    % Use a cell array to store the data for each element of the K matrix as L changes.
+    K_elements_data = cell(k_rows, k_cols);
+    
+    for i = 1:num_points
+        L_values(i) = results(i).params.L;
+        for r = 1:k_rows
+            for c = 1:k_cols
+                K_elements_data{r, c}(i) = results(i).K_gain(r, c);
+            end
+        end
+    end
+    
+    %% 2. Perform the Polynomial Fit
+    % =========================================================================
+    % ===                THIS IS A KEY TUNING PARAMETER                     ===
+    % =========================================================================
+    polynomial_order = 4; % <<<<<< Choose the order 'n' of the polynomial. Try 2, 3, 4, 5...
+    % =========================================================================
+    
+    [k_rows, k_cols] = size(p_models);
+    num_coeffs = polynomial_order + 1;
+    
+    % Initialize an empty matrix to store the coefficients
+    p_matrix = zeros(k_rows * k_cols, num_coeffs);
+    
+    % Loop through the cell array and stack the coefficient vectors into the matrix
+    idx = 1;
+    for r = 1:k_rows
+        for c = 1:k_cols
+            p_matrix(idx, :) = p_models{r, c};
+            idx = idx + 1;
+        end
+    end
+
+    
+    fprintf('Completed %d-order polynomial fitting for %d elements of the K matrix.\n', polynomial_order, k_rows*k_cols);
+    
+    %% 3. Visualization and Verification
+    % Create a new, finer L vector for smooth plotting.
+    L_fine = linspace(min(L_values), max(L_values), 200);
+    
+    figure('Name', 'Polynomial Fit Results for K Matrix Elements', 'Position', [50, 50, 1000, 600]);
+    plot_idx = 1;
+    for r = 1:k_rows
+        for c = 1:k_cols
+            subplot(k_rows, k_cols, plot_idx);
+            
+            % Plot the original data points.
+            plot(L_values, K_elements_data{r, c}, 'bo', 'MarkerFaceColor', 'b', 'DisplayName', 'Original Data Points');
+            hold on;
+            
+            % Calculate and plot the fitted curve.
+            K_fit_fine = polyval(p_models{r, c}, L_fine);
+            plot(L_fine, K_fit_fine, 'r-', 'LineWidth', 2, 'DisplayName', ['Order ' num2str(polynomial_order) ' Fit']);
+            
+            grid on;
+            title(sprintf('K(%d, %d) vs. L', r, c));
+            xlabel('Parameter L Value');
+            ylabel(sprintf('K(%d, %d) Value', r, c));
+            legend('show');
+            
+            plot_idx = plot_idx + 1;
+        end
+    end
+
 
 
    % --- Function Definition ---
@@ -169,7 +222,6 @@
 function [I,LH,LL ] = inertia_calculator(L_input)
     % This function calculates the inertia 'I' for a given input length 'L'.
     % It also returns the solved angles theta1 and theta2.
-
     % --- Define Constants ---
     L1 = 0.07;
     L2 = 0.105;

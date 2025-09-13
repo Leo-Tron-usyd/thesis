@@ -12,12 +12,12 @@ state_vec_sym = [x_s; dx_s; theta_s; dtheta_s; phi_s; dphi_s];
 input_vec_sym = [T_s; Tp_s];
 
 % 2. Define intermediate expressions using the simple placeholder variables
-Nm = M*(l*sin(phi_s)*dtheta_s^2 - sin(theta_s)*(L + L_m)*dtheta_s^2 + ddx - ddphi*l*cos(phi_s) + ddtheta*cos(theta_s)*(L + L_m));
-N = Nm + mp*(- L*sin(theta_s)*dtheta_s^2 + ddx + L*ddtheta*cos(theta_s));
+Nm = M*(l*sin(phi_s)*dphi_s^2     - sin(theta_s)*(L + L_m)*dtheta_s^2   + ddx - ddphi*l*cos(phi_s) + ddtheta*cos(theta_s)*(L + L_m));
+N = M*(l*sin(phi_s)*dphi_s^2 - sin(theta_s)*(L + L_m)*dtheta_s^2 + ddx - ddphi*l*cos(phi_s) + ddtheta*cos(theta_s)*(L + L_m)) + mp*(- L*sin(theta_s)*dtheta_s^2 + ddx + L*ddtheta*cos(theta_s));
 PM = M*g - M*(l*cos(phi_s)*dphi_s^2 + cos(theta_s)*(L + L_m)*dtheta_s^2 + ddphi*l*sin(phi_s) + ddtheta*sin(theta_s)*(L + L_m));
-P = PM + g*mp - mp*(L*cos(theta_s)*dtheta_s^2 + L*ddtheta*sin(theta_s));
+P = M*g - M*(l*cos(phi_s)*dphi_s^2 + cos(theta_s)*(L + L_m)*dtheta_s^2 + ddphi*l*sin(phi_s) + ddtheta*sin(theta_s)*(L + L_m)) + g*mp - mp*(L*cos(theta_s)*dtheta_s^2 + L*ddtheta*sin(theta_s));
 
-% 3. Set up the system of equations
+% 3. Set up the system of equations 
 % Note: Using placeholder T_s and Tp_s now
 eq5 = ddtheta == ((P*L + L_m*PM)*sin(theta_s) - (N*L + Nm*L_m)*cos(theta_s) - T_s + Tp_s) / Ip;
 eq8 = ddphi == (Nm*l*cos(phi_s) + PM*l*sin(phi_s) + Tp_s) / IM;
@@ -60,52 +60,46 @@ jacobian_Ac_func = matlabFunction( ...
 disp('Successfully created and saved both accel_func and jacobian_Ac_func.');
 
 
+%% --------------------------------------------------------------------------------------------------------------------------------------
 
-
-% % --- 1. Define all symbolic variables ---
+% % --- 1) Symbols ---
 % clear; clc;
 % 
-% % Define parameters as symbolic variables
+% % parameters
 % syms M mp g l L L_m real
 % 
-% % Define the variables that change with time as symbolic functions
-% syms X(t) theta(t) phi(t)
+% % time-varying functions (use distinct names)
+% syms X(t) TH(t) PH(t)
 % 
-% % BEST PRACTICE: Use distinct names for placeholder variables
-% % Here we use '_s' to denote a "state" variable
-% syms ddx ddtheta ddphi dx dtheta dphi x_s theta phi real
+% % scalar placeholders for state/derivatives
+% syms x_s dx ddx theta_s dtheta ddtheta phi_s dphi ddphi real
 % 
-% %% --- 2. Perform the differentiations ---
-% % (Using temporary names with '_t' to show they still depend on time 't')
-% Nm_t = M * diff( X(t) + (L+L_m)*sin(theta(t)) - l*sin(phi(t)), t, 2 );
-% N_t = mp * diff( X(t) + L*sin(theta(t)), t, 2 ) + Nm_t;
-% PM_t = g*M + M * diff( (L+L_m)*cos(theta(t)) + l*cos(phi(t)), t, 2 );
-% P_t = mp * diff( L*cos(theta(t)), t, 2 ) + g*mp + PM_t;
+% % --- 2) Build expressions with time functions ---
+% Nm_t = M * diff( X(t) + (L+L_m)*sin(TH(t)) - l*sin(PH(t)), t, 2 );
+% N_t  = mp*diff( X(t) + L*sin(TH(t)), t, 2 ) + Nm_t;
 % 
-% %% --- 3. Substitute placeholders for derivatives and functions ---
-% % Now the lists are clear and unambiguous
+% PM_t = g*M + M*diff( (L+L_m)*cos(TH(t)) + l*cos(PH(t)), t, 2 );
+% P_t  = mp*diff( L*cos(TH(t)), t, 2 ) + g*mp + PM_t;
 % 
-% old_vars = {
-%     diff(X(t),t,2), diff(theta(t),t,2), diff(phi(t),t,2), ...
-%     diff(X(t),t),   diff(theta(t),t),   diff(phi(t),t), ...
-%     X(t),           theta(t),           phi(t)
-% };
+% % --- 3) Substitute placeholders for derivatives & functions ---
+% old_vars = [ ...
+%     diff(X(t),t,2),   diff(TH(t),t,2),   diff(PH(t),t,2), ...
+%     diff(X(t),t),     diff(TH(t),t),     diff(PH(t),t),   ...
+%     X(t),             TH(t),             PH(t)            ];
 % 
-% new_vars = {
-%     ddx,            ddtheta,       ddphi, ...
-%     dx,           dtheta,           dphi, ...
-%     x_s,            theta,            phi
-% };
+% new_vars = [ ...
+%     ddx,              ddtheta,           ddphi, ...
+%     dx,               dtheta,            dphi,  ...
+%     x_s,              theta_s,           phi_s ];
 % 
-% % Assign the result of the substitution
 % Nm = subs(Nm_t, old_vars, new_vars);
-% N = subs(N_t, old_vars, new_vars);
+% N  = subs(N_t,  old_vars, new_vars);
 % PM = subs(PM_t, old_vars, new_vars);
-% P = subs(P_t, old_vars, new_vars);
+% P  = subs(P_t,  old_vars, new_vars);
 % 
-% %% --- 4. Display the results ---
-% fprintf('The symbolic expression for Nm after substitution is:\n');
-% disp(Nm);
-% disp(N);
-% disp(PM);
-% disp(P)
+% % --- 4) Show results ---
+% fprintf('Nm after substitution:\n'); disp(Nm);
+% fprintf('N after substitution:\n');  disp(N);
+% fprintf('PM after substitution:\n'); disp(PM);
+% fprintf('P after substitution:\n');  disp(P);
+

@@ -1,16 +1,34 @@
 current_state =
 current_input = 
 dt = 
+Zk = 
 
-
+R_k = 
 Q_k = 
 P_bk =
 
 
 
 
-
+%% X theta and phi non linear calculations
 calculated_accelerations = accel_func_generated( ...
+    current_state, ...
+    current_input, ...
+    param_values_num.M, ...
+    param_values_num.mp, ...
+    param_values_num.IM, ...
+    param_values_num.Ip, ...
+    param_values_num.l, ...
+    param_values_num.L, ...
+    param_values_num.L_m, ...
+    param_values_num.R, ...
+    param_values_num.g, ...
+    param_values_num.m_w, ...
+    param_values_num.I_wheel ...
+);
+
+%% Contineous Jacobian matrix calculation
+A_c_numerical = jacobian_Ac_generated( ...
     current_state, ...
     current_input, ...
     param_values_num.M, ...
@@ -35,22 +53,40 @@ dtheta_pred = current_state(4)+dt*ddtheta;
 dphi_pred = current_state(6)+dt*ddphi;
 
 %% estimation 
-x_pred = current_state(1)+dt*dx_pred;
-theta_pred =  current_state(3)+dt*dtheta_pred;
-phi_pred = current_state(5)+dt*dphi_pred;
+x_pred = current_state(1)+dt*current_state(2);
+theta_pred =  current_state(3)+dt*current_state(4);
+phi_pred = current_state(5)+dt*current_state(6);
 %% X_K_Hat: The prediction of the next state 
 X_k_hat = [x_pred;dx_pred;theta_pred;dtheta_pred;phi_pred;dphi_pred];
 
-param_cell = struct2cell(param_values_num);
-A_c_numerical = jacobian_Ac_generated(x_hat_prev, u_prev, param_cell{:});
-%% FK: state transition matrix
-Fk = eye(6) + dt * A_c_numerical;
+% ----- Discretization -----
+Fk = eye(6) + dt*A_c_numerical;   % matches explicit-Euler state update
 
-%% Pk: Current convariance matrix 
-Pk = Fk*P_bk*Fk.'+Q_k;
+% ----- Covariance predict -----
+Pk = Fk*P_bk*Fk.' + Q_k;
+Pk = 0.5*(Pk + Pk.');   % symmetrize (recommended)
 
+% ----- Measurement model -----
+H_k = [0,1,0,0,0,0;    % measure dx
+       0,0,1,0,0,0;    % measure theta
+       0,0,0,0,1,0];   % measure phi
 
+S   = H_k*Pk*H_k.' + R_k;
+K_f = (Pk*H_k.') / S;              % avoid explicit inv
 
+% Innovation with angle wrapping
+innov = Zk - H_k*X_k_hat;
+innov(2) = atan2(sin(innov(2)), cos(innov(2)));  % theta residual
+innov(3) = atan2(sin(innov(3)), cos(innov(3)));  % phi residual
 
+% State update
+X_k_hat_f = X_k_hat + K_f*innov;
 
+% Angle normalization (state)
+X_k_hat_f(3) = atan2(sin(X_k_hat_f(3)), cos(X_k_hat_f(3)));
+X_k_hat_f(5) = atan2(sin(X_k_hat_f(5)), cos(X_k_hat_f(5)));
 
+% Joseph-form covariance update (use K_f!)
+I = eye(6);
+Pk_f = (I - K_f*H_k)*Pk*(I - K_f*H_k).' + K_f*R_k*K_f.';
+Pk_f = 0.5*(Pk_f + Pk_f.');        % symmetrize (recommended)

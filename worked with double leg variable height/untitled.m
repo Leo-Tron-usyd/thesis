@@ -6,7 +6,7 @@
     N = mp * diff( X + L*sin(theta), t, 2 ) + Nm;
     PM = g*M + M * diff( (L+L_m)*cos(theta) + l*cos(phi), t, 2 );
     P = mp * diff( L*cos(theta), t, 2 ) + g*mp + PM;
-    
+            
 
     eq5 = diff(theta, t, 2) == ...
         ((P*L + L_m*PM)*sin(theta) - ...
@@ -112,6 +112,7 @@
     results = struct('params', {}, 'K_gain', {});
 
     for L_val = 0.13:0.01:0.28
+ %   for L_val = 0.18
         current_params = base_params;
         % Call the calculator function, which now returns the inertia AND the angles.
         [inertia_val, l_num, l_m_num] = inertia_calculator(L_val);
@@ -121,31 +122,8 @@
     
         A_aug_lin_num = double(subs(A_lin, current_params));
         B_aug_lin_num = double(subs(B_lin, current_params));
-    
-%       disp('Linearized System input matrix A aug:');
-%       disp(A_aug_lin_num);
-%         
-%       disp('Linearized System input matrix B aug:');
-%       disp(B_aug_lin_num);
-    
-    
-    %     % A_lin_num and B_lin_num calculated by previous steps
-    %     A = A_lin_num;
-    %     B = B_lin_num;
-        
-    %     X_desired = 0.6;  % desired position
-    %     
-    %     % weight matrix
-    %     Q = diag([1e-6, 100, 1, 1, 5000, 1]);  
-    %     R = diag([100 25]); 
-    % 
-    %     [K, ~, ~] = lqr(A, B, Q, R);
-    %         
-       % Build Augmented state space model
-    
-       dX_desired = 0.2;
-       dx_desired = [0;dX_desired;0;0;0;0];
-       Q_1 = diag([1e-6, 200, 1, 1, 5000, 1]);  
+   
+       Q_1 = diag([1e-6, 600, 1, 1, 5000, 1]);  
        R_1 = diag([100 25]);   
     
        [K_1, ~, ~] = lqr(A_aug_lin_num, B_aug_lin_num, Q_1, R_1);
@@ -188,6 +166,15 @@
     polynomial_order = 4; % <<<<<< Choose the order 'n' of the polynomial. Try 2, 3, 4, 5...
     % =========================================================================
     
+    p_models = cell(k_rows, k_cols); % Initialize the cell array to store models
+    for r = 1:k_rows
+        for c = 1:k_cols
+            % Use polyfit to find the polynomial coefficients
+            p_models{r, c} = polyfit(L_values, K_elements_data{r, c}, polynomial_order);
+        end
+    end
+
+
     [k_rows, k_cols] = size(p_models);
     num_coeffs = polynomial_order + 1;
     
@@ -236,59 +223,74 @@
 
 
 
-
-
-   % --- Function Definition ---
-% It's good practice to keep function definitions at the end of a script file.
-function [I,LH,LL ] = inertia_calculator(L_input)
-    % This function calculates the inertia 'I' for a given input length 'L'.
-    % It also returns the solved angles theta1 and theta2.
-
-    % --- Define Constants ---
-    L1 = 0.07;
-    L2 = 0.105;
-    M1 = 0.3;
-    M2 = 0.3;
-    M3 = 0.5;
-    M4 = 0.5;
+function [I,LH,LL] = inertia_calculator(L_input)
+    %#codegen
+    % Solves for theta1, theta2 from:
+    %   2*L1*sin(theta1) + 2*L2*sin(theta2) = L_input
+    %   0.5*LR + 2*L1*cos(theta1) - 2*L2*cos(theta2) = 0
+    % using a few Newton steps (no function handles, codegen-safe).
+    
+    % Constants (same as your previous function)
+    L1 = 0.07;  L2 = 0.105;
+    M1 = 0.3;   M2 = 0.3;    % not used directly but retained for clarity
+    M3 = 0.5;   M4 = 0.5;
     LR = 0.2;
-
-    % --- Define System of Equations for the Solver ---
-    % 'fun' returns the error for a given set of angles 'theta'.
-    % lsqnonlin will try to make these errors as close to zero as possible.
-    fun = @(theta) [
-        2*L1*sin(theta(1)) + 2*L2*sin(theta(2)) - L_input;
-        0.5*LR + 2*L1*cos(theta(1)) - 2*L2*cos(theta(2))
-        ];
     
-    % --- Initial Guess and Bounds for the solver ---
-    theta0 = [0.2, 0]; % Initial guess for [theta1, theta2]
-    lb = [0, -pi/2];         % Lower bounds [0, 0]
-    ub = [pi, pi/2];   % Upper bounds [pi/3, pi/3]
+    % Initial guess (could be persisted across calls for faster convergence)
+    theta1 = 0.2;
+    theta2 = 0.0;
     
-    % --- Solve the System using lsqnonlin ---
-    % Suppress the solver's default output for a cleaner command window.
-    options = optimoptions('lsqnonlin', 'Display', 'off');
-    theta_sol = lsqnonlin(fun, theta0, lb, ub, options);
+    % Newton iterations (small, damped)
+    for it = 1:10
+        s1 = sin(theta1); c1 = cos(theta1);
+        s2 = sin(theta2); c2 = cos(theta2);
     
-    % --- Extract Solution ---
-    theta1 = theta_sol(1);
-    theta2 = theta_sol(2);
+        f1 = 2*L1*s1 + 2*L2*s2 - L_input;
+        f2 = 0.5*LR + 2*L1*c1 - 2*L2*c2;
     
-    % --- Subsequent Calculations for Inertia ---
-    I_l = 2827482.39 * 1e-9;   % long leg
-    I_h = 586653.56 * 1e-9;    % short leg
+        % Jacobian
+        J11 =  2*L1*c1;   J12 =  2*L2*c2;
+        J21 = -2*L1*s1;   J22 =  2*L2*s2;
+    
+        % Solve J * d = -f  (2x2 solve)
+        detJ = J11*J22 - J12*J21;
+        if abs(detJ) < 1e-12
+            break; % singular Jacobian; leave current guess
+        end
+        d1 = (-f1*J22 + f2*J12)/detJ;
+        d2 = (-J11*f2 + J21*f1)/detJ;
+    
+        % Damping + update
+        alpha = 0.7;
+        theta1 = theta1 + alpha*d1;
+        theta2 = theta2 + alpha*d2;
+    
+        % Clamp to bounds (your original lb/ub)
+        if theta1 < 0,       theta1 = 0;     end
+        if theta1 > pi,      theta1 = pi;    end
+        if theta2 < -pi/2,   theta2 = -pi/2; end
+        if theta2 >  pi/2,   theta2 =  pi/2; end
+    
+        if (abs(d1)+abs(d2)) < 1e-9
+            break;
+        end
+    end
+    
+    % Geometry
+    I_l = 2827482.39e-9;   % long leg inertia
+    I_h = 586653.56e-9;    % short leg inertia
     
     y1 = L1*sin(theta1);
-    y2 = y1;
     y3 = 2*y1 + L2*sin(theta2);
-    y4 = y3;
     
-    LH = (y1*M1 + y2*M2 + y3*M3 + y4*M4) / (M1 + M2 + M3 + M4);
-    LL = L_input-LH;
+    % COM split
+    LH = (y1*M1 + y1*M2 + y3*M3 + y3*M4) / (M1 + M2 + M3 + M4);
+    LL = L_input - LH;
+    
+    % Distances
     LHR = sqrt((LH - y1)^2 + (LR/2 + L1*cos(theta1))^2);
     LLR = sqrt((y3 - LH)^2 + (L2*cos(theta2))^2);
     
-    % Final inertia calculation
+    % Inertia
     I = 2*(I_h + M1*LHR^2) + 2*(I_l + M3*LLR^2);
 end
