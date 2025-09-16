@@ -9,8 +9,8 @@ P0 = zeros(6,6);
 deg = pi/180;
 R_k = diag([1e-8, 1e-8, 1e-8]);   % but keep SPD!
 
-sigma_ax   = 0.5;         % m/s^2
-sigma_add  = 20*deg;      % rad/s^2  (for both theta, phi)
+sigma_ax   = 0.7;         % m/s^2
+sigma_add  = 30*deg;      % rad/s^2  (for both theta, phi)
 qx  = sigma_ax^2;         % 0.25
 qth = sigma_add^2;        % ~0.1219
 qphi= sigma_add^2;        % ~0.1219

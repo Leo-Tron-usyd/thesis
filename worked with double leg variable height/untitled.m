@@ -70,7 +70,7 @@
     disp(sol2);
     disp(sol4);
     disp(sol6);
-
+    
     f = [f1;sol2;f3;sol4;f5;sol6];
     A_sym = jacobian(f, [x1, x2, x3, x4, x5, x6]);  
     B_sym = jacobian(f, [T_n, Tp_n]);
@@ -81,13 +81,12 @@
 
     x_aug_star = [0,0,0,0,0,0,0];
     u_aug_star = [0,0];
-
+    
 
 
     Cv = zeros(1, 6);
     Cv(1, 2) = 1; %state 2, x_dot
-    A_aug = [0,Cv;zeros(6,1),A_sym];
-    B_aug = [ zeros(1, 2);B_sym];
+
 
 
 
@@ -95,9 +94,14 @@
     %% 5) substitute in at steady point
     A_lin = subs(A_sym, [x1, x2, x3, x4, x5, x6, T_n, Tp_n], [x_star, u_star]);
     B_lin = subs(B_sym, [x1, x2, x3, x4, x5, x6, T_n, Tp_n], [x_star, u_star]);
-    A_aug_lin = subs(A_aug, [x1, x2, x3, x4, x5, x6, T_n, Tp_n], [x_star, u_star]);
-    B_aug_lin = subs(B_aug, [x1, x2, x3, x4, x5, x6, T_n, Tp_n], [x_star, u_star]);
-    
+
+    epsI = 1e-3;                       % 1e-4 ~ 1e-2; tune
+    % Augment (x first, integrator last)
+    Aa = [A_lin,                  zeros(6,1);   
+          -Cv,                    -epsI          ];    % 7x7
+    Ba = [B_lin;
+          zeros(1, size(B_lin,2))];                % 7x2
+   
 
     base_params = struct();
     base_params.M = 1.2;
@@ -120,13 +124,15 @@
         current_params.L = l_num;
         current_params.L_m = l_m_num;
     
-        A_aug_lin_num = double(subs(A_lin, current_params));
-        B_aug_lin_num = double(subs(B_lin, current_params));
+        A_aug_lin_num = double(subs(Aa, current_params));
+        B_aug_lin_num = double(subs(Ba, current_params));
    
-       Q_1 = diag([1e-6, 600, 1, 1, 5000, 1]);  
-       R_1 = diag([100 25]);   
+        Qx = diag([1e-6, 300, 1, 1, 5000, 1]);   % your plant-state weights
+        Qi = 0.8;                                % integral of velocity error (tune)
+        Qa = blkdiag(Qx, Qi);                    % 7x7
+        R  = diag([100 25]);                     % 2x2
     
-       [K_1, ~, ~] = lqr(A_aug_lin_num, B_aug_lin_num, Q_1, R_1);
+       [K_1, ~, ~] = lqr(A_aug_lin_num, B_aug_lin_num, Qa, R);
 
         % --- 2. CREATE A STRUCT TO PAIR THE DATA ---
         new_result.params = current_params;
