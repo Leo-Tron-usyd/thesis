@@ -104,10 +104,10 @@
    
 
     base_params = struct();
-    base_params.M = 1.2;
+    base_params.M = 15; 
     base_params.mp = 1.6 *2;
     base_params.m_w = 0.3 * 2;
-    base_params.IM = 0.00725;
+    base_params.IM = 0.09069;
     base_params.I_wheel = 0.00038 * 2;
     base_params.l = 0.05;
     base_params.R = 0.05;
@@ -128,9 +128,9 @@
         B_aug_lin_num = double(subs(Ba, current_params));
    
         Qx = diag([1e-6, 300, 1, 1, 5000, 1]);   % your plant-state weights
-        Qi = 0.8;                                % integral of velocity error (tune)
+        Qi = 5;                                % integral of velocity error (tune)
         Qa = blkdiag(Qx, Qi);                    % 7x7
-        R  = diag([100 25]);                     % 2x2
+        R  = diag([90 20]);                     % 2x2
     
        [K_1, ~, ~] = lqr(A_aug_lin_num, B_aug_lin_num, Qa, R);
 

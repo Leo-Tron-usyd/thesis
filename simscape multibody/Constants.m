@@ -1,7 +1,7 @@
 Damping_coeff = 0.0001;
 Mass_upper_leg = 0.3;
 Mass_lower_leg = 0.5;
-Mass_body = 1.2;
+Mass_body = 15;
 Mass_wheel = 0.3;
 X0_hat = zeros(6,1);
 X0_hat(1)  = 0.0217;
